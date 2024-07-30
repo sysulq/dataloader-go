@@ -20,6 +20,7 @@ func TestDataLoader(t *testing.T) {
 	t.Run("LoadMany", testLoadMany)
 	t.Run("LoadMap", testLoadMap)
 	t.Run("Panic recovered", testPanicRecovered)
+	t.Run("Prime", testPrime)
 }
 
 func testBasicFunctionality(t *testing.T) {
@@ -306,5 +307,35 @@ func testPanicRecovered(t *testing.T) {
 	result, err := loader.Load(context.Background(), 1).Unwrap()
 	if err == nil {
 		t.Errorf("Expected error, got %v", result)
+	}
+}
+
+func testPrime(t *testing.T) {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
+		results := make([]Result[string], len(keys))
+		for i, key := range keys {
+			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
+		}
+		return results
+	})
+
+	// Load
+	data, err := loader.Load(context.Background(), 1).Unwrap()
+	if err != nil {
+		t.Errorf("Error: %v\n", data)
+	}
+
+	if data != "Result for 1" {
+		t.Errorf("Unexpected result: %v\n", data)
+	}
+
+	// Prime
+	data, err = loader.Prime(context.Background(), 1, "Prime for 1").Load(context.Background(), 1).Unwrap()
+	if err != nil {
+		t.Errorf("Error: %v\n", data)
+	}
+
+	if data != "Prime for 1" {
+		t.Errorf("Unexpected result: %v\n", data)
 	}
 }

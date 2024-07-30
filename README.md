@@ -24,20 +24,25 @@ API Design
 
 ```go
 // New creates a new DataLoader with the given loader and options.
-func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoader[K, V]
+func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[K, V]
 
-// Go loads a value for the given key. The value is returned in a channel.
-func (d *DataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V]
-// Load loads a value for the given key. The value is returned in a Result.
-func (d *DataLoader[K, V]) Load(ctx context.Context, key K) Result[V]
-// LoadMany loads values for the given keys. The values are returned in a slice of Results.
-func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V]
-// LoadMap loads values for the given keys. The values are returned in a map of Results.
-func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V]
-// Clear clears the value for the given key.
-func (d *DataLoader[K, V]) Clear(key K)
-// ClearAll clears all values.
-func (d *DataLoader[K, V]) ClearAll()
+type Interface[K comparable, V any] interface {
+	// Go loads a single key asynchronously
+	Go(context.Context, K) <-chan Result[V]
+	// Load loads a single key
+	Load(context.Context, K) Result[V]
+	// LoadMany loads multiple keys
+	LoadMany(context.Context, []K) []Result[V]
+	// LoadMap loads multiple keys and returns a map of results
+	LoadMap(context.Context, []K) map[K]Result[V]
+	// Clear removes an item from the cache
+	Clear(K) Interface[K, V]
+	// ClearAll clears the entire cache
+	ClearAll() Interface[K, V]
+	// Prime primes the cache with a key and value
+	Prime(ctx context.Context, key K, value V) Interface[K, V]
+}
+
 ```
 
 Benchmark

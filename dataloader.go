@@ -26,14 +26,39 @@ type config struct {
 	CacheExpire time.Duration
 }
 
-// DataLoader is the main struct for the dataloader
-type DataLoader[K comparable, V any] struct {
+// dataLoader is the main struct for the dataloader
+type dataLoader[K comparable, V any] struct {
 	loader Loader[K, V]
 	cache  *expirable.LRU[K, V]
 	config config
 	mu     sync.Mutex
 	batch  []K
 	chs    []chan Result[V]
+}
+
+// Interface is a `DataLoader` Interface which defines a public API for loading data from a particular
+// data back-end with unique keys such as the `id` column of a SQL table or
+// document name in a MongoDB database, given a batch loading function.
+//
+// Each `DataLoader` instance should contain a unique memoized cache. Use caution when
+// used in long-lived applications or those which serve many users with
+// different access permissions and consider creating a new instance per
+// web request.
+type Interface[K comparable, V any] interface {
+	// Go loads a single key asynchronously
+	Go(context.Context, K) <-chan Result[V]
+	// Load loads a single key
+	Load(context.Context, K) Result[V]
+	// LoadMany loads multiple keys
+	LoadMany(context.Context, []K) []Result[V]
+	// LoadMap loads multiple keys and returns a map of results
+	LoadMap(context.Context, []K) map[K]Result[V]
+	// Clear removes an item from the cache
+	Clear(K) Interface[K, V]
+	// ClearAll clears the entire cache
+	ClearAll() Interface[K, V]
+	// Prime primes the cache with a key and value
+	Prime(ctx context.Context, key K, value V) Interface[K, V]
 }
 
 // Result is the result of a DataLoader operation
@@ -53,7 +78,7 @@ func (r Result[V]) Unwrap() (V, error) {
 }
 
 // New creates a new DataLoader with the given loader function and options
-func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoader[K, V] {
+func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[K, V] {
 	config := config{
 		BatchSize:   100,
 		Wait:        16 * time.Millisecond,
@@ -65,7 +90,7 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoade
 		option(&config)
 	}
 
-	dl := &DataLoader[K, V]{
+	dl := &dataLoader[K, V]{
 		loader: loader,
 		config: config,
 		batch:  make([]K, 0, config.BatchSize),
@@ -106,7 +131,7 @@ func WithWait(wait time.Duration) Option {
 }
 
 // Go loads a single key asynchronously
-func (d *DataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
+func (d *dataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
 	ch := make(chan Result[V], 1)
 
 	// Check if the key is in the cache
@@ -145,12 +170,12 @@ func (d *DataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
 }
 
 // Load loads a single key
-func (d *DataLoader[K, V]) Load(ctx context.Context, key K) Result[V] {
+func (d *dataLoader[K, V]) Load(ctx context.Context, key K) Result[V] {
 	return <-d.Go(ctx, key)
 }
 
 // LoadMany loads multiple keys
-func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
+func (d *dataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
 		chs[i] = d.Go(ctx, key)
@@ -165,7 +190,7 @@ func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 }
 
 // LoadMap loads multiple keys and returns a map of results
-func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V] {
+func (d *dataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
 		chs[i] = d.Go(ctx, key)
@@ -180,7 +205,7 @@ func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V
 }
 
 // scheduleBatch schedules a batch to be processed
-func (d *DataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V]) {
+func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V]) {
 	select {
 	case <-time.After(d.config.Wait):
 		d.mu.Lock()
@@ -196,7 +221,7 @@ func (d *DataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V])
 }
 
 // processBatch processes a batch of keys
-func (d *DataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []chan Result[V]) {
+func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []chan Result[V]) {
 	defer func() {
 		if r := recover(); r != nil {
 			const size = 64 << 10
@@ -223,15 +248,30 @@ func (d *DataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []cha
 }
 
 // Clear removes an item from the cache
-func (d *DataLoader[K, V]) Clear(key K) {
+func (d *dataLoader[K, V]) Clear(key K) Interface[K, V] {
 	if d.cache != nil {
 		d.cache.Remove(key)
 	}
+
+	return d
 }
 
 // ClearAll clears the entire cache
-func (d *DataLoader[K, V]) ClearAll() {
+func (d *dataLoader[K, V]) ClearAll() Interface[K, V] {
 	if d.cache != nil {
 		d.cache.Purge()
 	}
+
+	return d
+}
+
+// Prime primes the cache with a key and value
+func (d *dataLoader[K, V]) Prime(ctx context.Context, key K, value V) Interface[K, V] {
+	if d.cache != nil {
+		if _, ok := d.cache.Get(key); ok {
+			d.cache.Add(key, value)
+		}
+	}
+
+	return d
 }
