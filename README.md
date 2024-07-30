@@ -31,6 +31,10 @@ func (d *DataLoader[K, V]) Load(ctx context.Context, key K) Result[V]
 func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V]
 // LoadMap loads values for the given keys. The values are returned in a map of Results.
 func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V]
+// Clear clears the value for the given key.
+func (d *DataLoader[K, V]) Clear(key K)
+// ClearAll clears all values.
+func (d *DataLoader[K, V]) ClearAll()
 ```
 
 Benchmark
