@@ -26,8 +26,8 @@ jobs:
     - name: Test
       run: go test -v ./... -coverprofile=coverage.out
 
-    - uses: codecov/codecov-action@v4
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4.0.1
       with:
-        files: ./coverage.out # optional
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: sysulq/dataloader-go
