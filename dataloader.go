@@ -65,18 +65,19 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoade
 		option(&config)
 	}
 
-	var cache *expirable.LRU[K, V]
-	if config.CacheSize > 0 {
-		cache = expirable.NewLRU[K, V](config.CacheSize, nil, config.CacheExpire)
-	}
-
-	return &DataLoader[K, V]{
+	dl := &DataLoader[K, V]{
 		loader: loader,
-		cache:  cache,
 		config: config,
 		batch:  make([]K, 0, config.BatchSize),
 		chs:    make([]chan Result[V], 0, config.BatchSize),
 	}
+
+	// Create a cache if the cache size is greater than 0
+	if config.CacheSize > 0 {
+		dl.cache = expirable.NewLRU[K, V](config.CacheSize, nil, config.CacheExpire)
+	}
+
+	return dl
 }
 
 // Option is a function type for configuring DataLoader
@@ -104,8 +105,8 @@ func WithWait(wait time.Duration) Option {
 	}
 }
 
-// AsyncLoad loads a single key asynchronously
-func (d *DataLoader[K, V]) AsyncLoad(ctx context.Context, key K) <-chan Result[V] {
+// Go loads a single key asynchronously
+func (d *DataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
 	ch := make(chan Result[V], 1)
 
 	// Check if the key is in the cache
@@ -145,14 +146,14 @@ func (d *DataLoader[K, V]) AsyncLoad(ctx context.Context, key K) <-chan Result[V
 
 // Load loads a single key
 func (d *DataLoader[K, V]) Load(ctx context.Context, key K) Result[V] {
-	return <-d.AsyncLoad(ctx, key)
+	return <-d.Go(ctx, key)
 }
 
 // LoadMany loads multiple keys
 func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
-		chs[i] = d.AsyncLoad(ctx, key)
+		chs[i] = d.Go(ctx, key)
 	}
 
 	results := make([]Result[V], len(keys))
@@ -167,7 +168,7 @@ func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
-		chs[i] = d.AsyncLoad(ctx, key)
+		chs[i] = d.Go(ctx, key)
 	}
 
 	results := make(map[K]Result[V], len(keys))

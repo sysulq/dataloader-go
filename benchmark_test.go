@@ -27,7 +27,7 @@ func BenchmarkDataLoader(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			results := make([]<-chan Result[string], 10)
 			for j := 0; j < 10; j++ {
-				results[j] = loader.AsyncLoad(context.Background(), j)
+				results[j] = loader.Go(context.Background(), j)
 			}
 			for j := 0; j < 10; j++ {
 				<-results[j]

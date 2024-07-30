@@ -37,7 +37,7 @@ func TestExample(t *testing.T) {
 	}
 
 	// AsyncLoad
-	ch := loader.AsyncLoad(ctx, 2)
+	ch := loader.Go(ctx, 2)
 	result := <-ch
 
 	fmt.Printf(result.Unwrap())

@@ -23,8 +23,8 @@ API Design
 // New creates a new DataLoader with the given loader and options.
 func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoader[K, V]
 
-// AsyncLoad loads a value for the given key. The value is returned in a channel.
-func (d *DataLoader[K, V]) AsyncLoad(ctx context.Context, key K) <-chan Result[V]
+// Go loads a value for the given key. The value is returned in a channel.
+func (d *DataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V]
 // Load loads a value for the given key. The value is returned in a Result.
 func (d *DataLoader[K, V]) Load(ctx context.Context, key K) Result[V]
 // LoadMany loads values for the given keys. The values are returned in a slice of Results.
