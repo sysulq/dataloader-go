@@ -1,6 +1,9 @@
 dataloader-go
 ===
 
+[![Go](https://github.com/sysulq/dataloader-go/actions/workflows/go.yml/badge.svg)](https://github.com/sysulq/dataloader-go/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/sysulq/dataloader-go/graph/badge.svg?token=KHQZ38ES45)](https://codecov.io/gh/sysulq/dataloader-go)
+
 This is a implementation of a dataloader in Go.
 
 - 200+ lines of code, easy to understand and maintain.
