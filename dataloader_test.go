@@ -22,7 +22,7 @@ func TestDataLoader(t *testing.T) {
 }
 
 func testBasicFunctionality(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
@@ -42,7 +42,7 @@ func testBasicFunctionality(t *testing.T) {
 
 func testCaching(t *testing.T) {
 	callCount := 0
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		callCount++
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
@@ -62,7 +62,7 @@ func testCaching(t *testing.T) {
 func testBatching(t *testing.T) {
 	var mu sync.Mutex
 	batchSizes := make([]int, 0)
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		mu.Lock()
 		batchSizes = append(batchSizes, len(keys))
 		mu.Unlock()
@@ -112,7 +112,7 @@ func testBatching(t *testing.T) {
 }
 
 func testErrorHandling(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			if key%2 == 0 {
@@ -139,7 +139,7 @@ func testErrorHandling(t *testing.T) {
 }
 
 func testConcurrency(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		time.Sleep(100 * time.Millisecond) // Simulate some work
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
@@ -166,7 +166,7 @@ func testConcurrency(t *testing.T) {
 }
 
 func testOptions(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
@@ -187,7 +187,7 @@ func testOptions(t *testing.T) {
 }
 
 func testContextCancellation(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		<-ctx.Done()
 		return nil
 	})
@@ -201,7 +201,7 @@ func testContextCancellation(t *testing.T) {
 }
 
 func testClearAndClearAll(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
@@ -226,7 +226,7 @@ func testClearAndClearAll(t *testing.T) {
 }
 
 func testLoadMany(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
@@ -258,7 +258,7 @@ func testLoadMany(t *testing.T) {
 }
 
 func testLoadMap(t *testing.T) {
-	loader := NewBatchedLoader(func(ctx context.Context, keys []int) []Result[string] {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
 		results := make([]Result[string], len(keys))
 		for i, key := range keys {
 			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}

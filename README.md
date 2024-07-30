@@ -9,10 +9,20 @@ This is a implementation of a dataloader in Go.
 - Use a lru cache to store the loaded values.
 - Can be used to batch and cache multiple requests.
 
+Installation
+---
+
+```go
+import "github.com/sysulq/dataloader-go"
+```
+
 API Design
 ---
 
 ```go
+// New creates a new DataLoader with the given loader and options.
+func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoader[K, V]
+
 // AsyncLoad loads a value for the given key. The value is returned in a channel.
 func (d *DataLoader[K, V]) AsyncLoad(ctx context.Context, key K) <-chan Result[V]
 // Load loads a value for the given key. The value is returned in a Result.

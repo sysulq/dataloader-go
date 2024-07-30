@@ -19,7 +19,7 @@ func exampleLoader(ctx context.Context, keys []int) []dataloader.Result[string] 
 }
 
 func TestExample(t *testing.T) {
-	loader := dataloader.NewBatchedLoader(
+	loader := dataloader.New(
 		exampleLoader,
 		dataloader.WithCache(100, time.Minute),
 		dataloader.WithBatchSize(50),
