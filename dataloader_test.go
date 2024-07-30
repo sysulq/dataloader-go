@@ -19,6 +19,7 @@ func TestDataLoader(t *testing.T) {
 	t.Run("Clear and ClearAll", testClearAndClearAll)
 	t.Run("LoadMany", testLoadMany)
 	t.Run("LoadMap", testLoadMap)
+	t.Run("Panic recovered", testPanicRecovered)
 }
 
 func testBasicFunctionality(t *testing.T) {
@@ -294,5 +295,16 @@ func testLoadMap(t *testing.T) {
 
 	if len(results) != 8 {
 		t.Errorf("Expected 3 results, got %d", len(results))
+	}
+}
+
+func testPanicRecovered(t *testing.T) {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
+		panic("Panic")
+	})
+
+	result, err := loader.Load(context.Background(), 1).Unwrap()
+	if err == nil {
+		t.Errorf("Expected error, got %v", result)
 	}
 }

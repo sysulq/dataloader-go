@@ -2,6 +2,9 @@ package dataloader
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -193,6 +196,20 @@ func (d *DataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V])
 
 // processBatch processes a batch of keys
 func (d *DataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []chan Result[V]) {
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			fmt.Fprintf(os.Stderr, "Dataloader: Panic received in loader function: %v\n%s", r, buf)
+
+			for _, ch := range chs {
+				ch <- Result[V]{err: fmt.Errorf("panic received in loader function: %v", r)}
+				close(ch)
+			}
+			return
+		}
+	}()
 	results := d.loader(ctx, keys)
 
 	for i, key := range keys {
