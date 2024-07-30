@@ -3,7 +3,7 @@ dataloader-go
 
 This is a implementation of a dataloader in Go.
 
-- 200 lines of code, easy to understand and maintain.
+- 200+ lines of code, easy to understand and maintain.
 - 100% test coverage, bug free and reliable.
 - Based on generics and can be used with any type of data.
 - Use a lru cache to store the loaded values.
@@ -42,7 +42,7 @@ goarch: amd64
 pkg: github.com/sysulq/dataloader-go
 cpu: Intel(R) Core(TM) i5-10600K CPU @ 4.10GHz
 BenchmarkDataLoader/direct.Batch-12         	 1233176	       824.4 ns/op	     480 B/op	      11 allocs/op
-BenchmarkDataLoader/dataloader.AsyncLoad-12 	  515784	      2258 ns/op	    1280 B/op	      20 allocs/op
+BenchmarkDataLoader/dataloader.Go-12 	          515784	      2258 ns/op	    1280 B/op	      20 allocs/op
 BenchmarkDataLoader/dataloader.Load-12      	  501853	      2324 ns/op	    1280 B/op	      20 allocs/op
 BenchmarkDataLoader/dataloader.LoadMany-12  	  457884	      2502 ns/op	    1680 B/op	      22 allocs/op
 BenchmarkDataLoader/dataloader.LoadMap-12   	  445101	      2715 ns/op	    2119 B/op	      23 allocs/op
