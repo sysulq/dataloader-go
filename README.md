@@ -32,3 +32,21 @@ func (d *DataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V]
 // LoadMap loads values for the given keys. The values are returned in a map of Results.
 func (d *DataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V]
 ```
+
+Benchmark
+---
+
+```plain
+goos: darwin
+goarch: amd64
+pkg: github.com/sysulq/dataloader-go
+cpu: Intel(R) Core(TM) i5-10600K CPU @ 4.10GHz
+BenchmarkDataLoader/direct.Batch-12         	 1233176	       824.4 ns/op	     480 B/op	      11 allocs/op
+BenchmarkDataLoader/dataloader.AsyncLoad-12 	  515784	      2258 ns/op	    1280 B/op	      20 allocs/op
+BenchmarkDataLoader/dataloader.Load-12      	  501853	      2324 ns/op	    1280 B/op	      20 allocs/op
+BenchmarkDataLoader/dataloader.LoadMany-12  	  457884	      2502 ns/op	    1680 B/op	      22 allocs/op
+BenchmarkDataLoader/dataloader.LoadMap-12   	  445101	      2715 ns/op	    2119 B/op	      23 allocs/op
+PASS
+coverage: 73.8% of statements
+ok  	github.com/sysulq/dataloader-go	6.384s
+```
