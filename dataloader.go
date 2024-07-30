@@ -62,7 +62,10 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) *DataLoade
 		option(&config)
 	}
 
-	cache := expirable.NewLRU[K, V](config.CacheSize, nil, config.CacheExpire)
+	var cache *expirable.LRU[K, V]
+	if config.CacheSize > 0 {
+		cache = expirable.NewLRU[K, V](config.CacheSize, nil, config.CacheExpire)
+	}
 
 	return &DataLoader[K, V]{
 		loader: loader,
@@ -103,10 +106,12 @@ func (d *DataLoader[K, V]) AsyncLoad(ctx context.Context, key K) <-chan Result[V
 	ch := make(chan Result[V], 1)
 
 	// Check if the key is in the cache
-	if v, ok := d.cache.Get(key); ok {
-		ch <- Result[V]{data: v}
-		close(ch)
-		return ch
+	if d.cache != nil {
+		if v, ok := d.cache.Get(key); ok {
+			ch <- Result[V]{data: v}
+			close(ch)
+			return ch
+		}
 	}
 
 	// Lock the DataLoader
@@ -191,7 +196,7 @@ func (d *DataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []cha
 	results := d.loader(ctx, keys)
 
 	for i, key := range keys {
-		if results[i].err == nil {
+		if results[i].err == nil && d.cache != nil {
 			d.cache.Add(key, results[i].data)
 		}
 		chs[i] <- results[i]
@@ -201,10 +206,14 @@ func (d *DataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []cha
 
 // Clear removes an item from the cache
 func (d *DataLoader[K, V]) Clear(key K) {
-	d.cache.Remove(key)
+	if d.cache != nil {
+		d.cache.Remove(key)
+	}
 }
 
 // ClearAll clears the entire cache
 func (d *DataLoader[K, V]) ClearAll() {
-	d.cache.Purge()
+	if d.cache != nil {
+		d.cache.Purge()
+	}
 }
