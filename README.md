@@ -4,7 +4,12 @@ dataloader-go
 [![Go](https://github.com/sysulq/dataloader-go/actions/workflows/go.yml/badge.svg)](https://github.com/sysulq/dataloader-go/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/sysulq/dataloader-go/graph/badge.svg?token=KHQZ38ES45)](https://codecov.io/gh/sysulq/dataloader-go)
 
-This is a implementation of a dataloader in Go.
+This is a Go implementation of Facebook's DataLoader.
+
+A generic utility to be used as part of your application's data fetching layer to provide a consistent API over various backends and reduce the number of requests to the server.
+
+Feature
+---
 
 - 200+ lines of code, easy to understand and maintain.
 - 100% test coverage, bug free and reliable.
