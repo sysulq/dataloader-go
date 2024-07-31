@@ -33,7 +33,7 @@ type dataLoader[K comparable, V any] struct {
 	config config
 	mu     sync.Mutex
 	batch  []K
-	chs    []chan Result[V]
+	chs    map[K][]chan Result[V]
 }
 
 // Interface is a `DataLoader` Interface which defines a public API for loading data from a particular
@@ -93,9 +93,9 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[
 	dl := &dataLoader[K, V]{
 		loader: loader,
 		config: config,
-		batch:  make([]K, 0, config.BatchSize),
-		chs:    make([]chan Result[V], 0, config.BatchSize),
 	}
+
+	dl.reset()
 
 	// Create a cache if the cache size is greater than 0
 	if config.CacheSize > 0 {
@@ -150,18 +150,24 @@ func (d *dataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
 		go d.scheduleBatch(ctx, ch)
 	}
 
+	// Check if the key is in flight
+	if chs, ok := d.chs[key]; ok {
+		d.chs[key] = append(chs, ch)
+		d.mu.Unlock()
+		return ch
+	}
+
 	// If the current batch is full, start processing it
 	if len(d.batch) >= d.config.BatchSize {
 		// spawn a new goroutine to process the batch
 		go d.processBatch(ctx, d.batch, d.chs)
 		// Create a new batch, and a new set of channels
-		d.batch = make([]K, 0, d.config.BatchSize)
-		d.chs = make([]chan Result[V], 0, d.config.BatchSize)
+		d.reset()
 	}
 
 	// Add the key and channel to the current batch
 	d.batch = append(d.batch, key)
-	d.chs = append(d.chs, ch)
+	d.chs[key] = []chan Result[V]{ch}
 
 	// Unlock the DataLoader
 	d.mu.Unlock()
@@ -204,6 +210,12 @@ func (d *dataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V
 	return results
 }
 
+// reset resets the DataLoader
+func (d *dataLoader[K, V]) reset() {
+	d.batch = make([]K, 0, d.config.BatchSize)
+	d.chs = make(map[K][]chan Result[V], d.config.BatchSize)
+}
+
 // scheduleBatch schedules a batch to be processed
 func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V]) {
 	select {
@@ -211,8 +223,7 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V])
 		d.mu.Lock()
 		if len(d.batch) > 0 {
 			go d.processBatch(ctx, d.batch, d.chs)
-			d.batch = make([]K, 0, d.config.BatchSize)
-			d.chs = make([]chan Result[V], 0, d.config.BatchSize)
+			d.reset()
 		}
 		d.mu.Unlock()
 	case <-ctx.Done():
@@ -221,7 +232,7 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V])
 }
 
 // processBatch processes a batch of keys
-func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []chan Result[V]) {
+func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs map[K][]chan Result[V]) {
 	defer func() {
 		if r := recover(); r != nil {
 			const size = 64 << 10
@@ -229,9 +240,11 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []cha
 			buf = buf[:runtime.Stack(buf, false)]
 			fmt.Fprintf(os.Stderr, "Dataloader: Panic received in loader function: %v\n%s", r, buf)
 
-			for _, ch := range chs {
-				ch <- Result[V]{err: fmt.Errorf("panic received in loader function: %v", r)}
-				close(ch)
+			for _, chs := range chs {
+				for _, ch := range chs {
+					ch <- Result[V]{err: fmt.Errorf("panic received in loader function: %v", r)}
+					close(ch)
+				}
 			}
 			return
 		}
@@ -242,8 +255,11 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs []cha
 		if results[i].err == nil && d.cache != nil {
 			d.cache.Add(key, results[i].data)
 		}
-		chs[i] <- results[i]
-		close(chs[i])
+
+		for _, ch := range chs[key] {
+			ch <- results[i]
+			close(ch)
+		}
 	}
 }
 

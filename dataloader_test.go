@@ -21,6 +21,38 @@ func TestDataLoader(t *testing.T) {
 	t.Run("LoadMap", testLoadMap)
 	t.Run("Panic recovered", testPanicRecovered)
 	t.Run("Prime", testPrime)
+	t.Run("Inflight", testInflight)
+}
+
+func testInflight(t *testing.T) {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
+		if len(keys) != 5 {
+			t.Errorf("Expected 5 keys, got %d", keys)
+		}
+
+		results := make([]Result[string], len(keys))
+		for i, key := range keys {
+			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
+		}
+		return results
+	}, WithBatchSize(5))
+
+	chs := make([]<-chan Result[string], 0)
+	for i := 0; i < 10; i++ {
+		chs = append(chs, loader.Go(context.Background(), i/2))
+	}
+
+	for idx, ch := range chs {
+		result := <-ch
+		data, err := result.Unwrap()
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if data != fmt.Sprintf("Result for %d", idx/2) {
+			t.Errorf("Unexpected result: %v", data)
+		}
+	}
 }
 
 func testBasicFunctionality(t *testing.T) {

@@ -23,7 +23,7 @@ func BenchmarkDataLoader(b *testing.B) {
 		}
 	})
 
-	b.Run("dataloader.AsyncLoad", func(b *testing.B) {
+	b.Run("dataloader.Go", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			results := make([]<-chan Result[string], 10)
 			for j := 0; j < 10; j++ {

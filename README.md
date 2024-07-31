@@ -9,8 +9,9 @@ This is a implementation of a dataloader in Go.
 - 200+ lines of code, easy to understand and maintain.
 - 100% test coverage, bug free and reliable.
 - Based on generics and can be used with any type of data.
-- Use a lru cache to store the loaded values.
+- Use a LRU cache to store the loaded values.
 - Can be used to batch and cache multiple requests.
+- Deduplicate identical requests, reducing the number of requests.
 
 Installation
 ---
