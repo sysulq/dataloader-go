@@ -45,8 +45,6 @@ type dataLoader[K comparable, V any] struct {
 // different access permissions and consider creating a new instance per
 // web request.
 type Interface[K comparable, V any] interface {
-	// Go loads a single key asynchronously
-	Go(context.Context, K) <-chan Result[V]
 	// Load loads a single key
 	Load(context.Context, K) Result[V]
 	// LoadMany loads multiple keys
@@ -130,8 +128,8 @@ func WithWait(wait time.Duration) Option {
 	}
 }
 
-// Go loads a single key asynchronously
-func (d *dataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
+// goLoad loads a single key asynchronously
+func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 	ch := make(chan Result[V], 1)
 
 	// Check if the key is in the cache
@@ -177,14 +175,14 @@ func (d *dataLoader[K, V]) Go(ctx context.Context, key K) <-chan Result[V] {
 
 // Load loads a single key
 func (d *dataLoader[K, V]) Load(ctx context.Context, key K) Result[V] {
-	return <-d.Go(ctx, key)
+	return <-d.goLoad(ctx, key)
 }
 
 // LoadMany loads multiple keys
 func (d *dataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
-		chs[i] = d.Go(ctx, key)
+		chs[i] = d.goLoad(ctx, key)
 	}
 
 	results := make([]Result[V], len(keys))
@@ -199,7 +197,7 @@ func (d *dataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 func (d *dataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V] {
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
-		chs[i] = d.Go(ctx, key)
+		chs[i] = d.goLoad(ctx, key)
 	}
 
 	results := make(map[K]Result[V], len(keys))

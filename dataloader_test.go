@@ -39,7 +39,7 @@ func testInflight(t *testing.T) {
 
 	chs := make([]<-chan Result[string], 0)
 	for i := 0; i < 10; i++ {
-		chs = append(chs, loader.Go(context.Background(), i/2))
+		chs = append(chs, loader.(*dataLoader[int, string]).goLoad(context.Background(), i/2))
 	}
 
 	for idx, ch := range chs {

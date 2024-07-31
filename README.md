@@ -92,18 +92,6 @@ func TestExample(t *testing.T) {
 		// Result: Result for 1
 	}
 
-	// Go
-	ch := loader.Go(ctx, 2)
-	result := <-ch
-	data, err = result.Unwrap()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	} else {
-		fmt.Printf("Result: %s\n", data)
-		// Output:
-		// Result: Result for 2
-	}
-
 	// LoadMany
 	results := loader.LoadMany(ctx, []int{3, 4, 5})
 	for _, result := range results {
