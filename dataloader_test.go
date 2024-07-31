@@ -279,14 +279,18 @@ func testLoadMany(t *testing.T) {
 		t.Errorf("Unexpected results: %v", results)
 	}
 
-	results = loader.LoadMany(context.Background(), []int{1, 2, 3, 4, 5, 6, 7, 8})
+	results = loader.LoadMany(context.Background(), []int{1, 2, 3, 4, 5, 6, 7, 8, 1})
 	if results[0].err != nil || results[1].err != nil || results[2].err != nil {
 		t.Errorf("Unexpected error: %v", results)
 	}
-	if len(results) != 8 {
+	if len(results) != 9 {
 		t.Errorf("Expected 3 results, got %d", len(results))
 	}
 	if results[0].data != "Result for 1" || results[1].data != "Result for 2" || results[2].data != "Result for 3" {
+		t.Errorf("Unexpected results: %v", results)
+	}
+
+	if results[8].data != "Result for 1" {
 		t.Errorf("Unexpected results: %v", results)
 	}
 }
@@ -315,7 +319,7 @@ func testLoadMap(t *testing.T) {
 		t.Errorf("Expected 3 results, got %d", len(results))
 	}
 
-	results = loader.LoadMap(context.Background(), []int{1, 2, 3, 4, 5, 6, 7, 8})
+	results = loader.LoadMap(context.Background(), []int{1, 2, 3, 4, 5, 6, 7, 8, 1})
 	for k, v := range results {
 		data, err := v.Unwrap()
 		if err != nil {
@@ -327,7 +331,7 @@ func testLoadMap(t *testing.T) {
 	}
 
 	if len(results) != 8 {
-		t.Errorf("Expected 3 results, got %d", len(results))
+		t.Errorf("Expected 8 results, got %d", len(results))
 	}
 }
 
