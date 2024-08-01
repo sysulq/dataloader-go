@@ -62,20 +62,31 @@ func testTrace(t *testing.T) {
 			t.Errorf("Expected 11 spans, got %d", len(spans.Snapshots()))
 		}
 
-		if spans.Snapshots()[0].Name() != "dataLoader.Batch" {
-			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		haveBatch := false
+		haveLoad := false
+		loadCount := 0
+		for _, s := range spans.Snapshots() {
+			if s.Name() == "dataLoader.Batch" {
+				haveBatch = true
+				if len(s.Links()) != 10 {
+					t.Errorf("Expected 10 links, got %d", len(s.Links()))
+				}
+			}
+			if s.Name() == "dataLoader.Load" {
+				loadCount++
+				haveLoad = true
+				if len(s.Links()) != 0 {
+					t.Errorf("Expected 0 link, got %d", len(s.Links()))
+				}
+			}
 		}
 
-		if len(spans.Snapshots()[0].Links()) != 10 {
-			t.Errorf("Expected 10 links, got %d", len(spans.Snapshots()[0].Links()))
+		if !haveBatch {
+			t.Errorf("Expected to have a batch span")
 		}
 
-		if spans.Snapshots()[1].Name() != "dataLoader.Load" {
-			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
-		}
-
-		if len(spans.Snapshots()[1].Links()) != 0 {
-			t.Errorf("Expected 3 links, got %d", len(spans.Snapshots()[0].Links()))
+		if !haveLoad {
+			t.Errorf("Expected to have a load span")
 		}
 
 		exporter.Reset()
