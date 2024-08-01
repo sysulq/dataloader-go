@@ -259,7 +259,7 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx 
 			seen[bCtx] = struct{}{}
 		}
 		var span trace.Span
-		ctx, span = d.config.TracerProvider.Tracer("dataLoader").Start(ctx, "dataLoader.Batch", trace.WithLinks(links...))
+		ctx, span = d.startTrace(ctx, "dataLoader.Batch", trace.WithLinks(links...))
 		defer span.End()
 	}
 
@@ -288,9 +288,12 @@ func sendResult[V any](chs []chan Result[V], result Result[V]) {
 }
 
 // startTrace starts a trace span
-func (d *dataLoader[K, V]) startTrace(ctx context.Context, name string) (context.Context, trace.Span) {
+func (d *dataLoader[K, V]) startTrace(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	if d.config.TracerProvider != nil {
-		return d.config.TracerProvider.Tracer("dataLoader").Start(ctx, name)
+		span := trace.SpanFromContext(ctx)
+		if span.SpanContext().IsValid() {
+			return d.config.TracerProvider.Tracer("dataLoader").Start(ctx, name, opts...)
+		}
 	}
 	return ctx, noop.Span{}
 }
