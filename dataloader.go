@@ -28,12 +28,13 @@ type config struct {
 
 // dataLoader is the main struct for the dataloader
 type dataLoader[K comparable, V any] struct {
-	loader Loader[K, V]
-	cache  *expirable.LRU[K, V]
-	config config
-	mu     sync.Mutex
-	batch  []K
-	chs    map[K][]chan Result[V]
+	loader       Loader[K, V]
+	cache        *expirable.LRU[K, V]
+	config       config
+	mu           sync.Mutex
+	batch        []K
+	chs          map[K][]chan Result[V]
+	stopSchedule chan struct{}
 }
 
 // Interface is a `DataLoader` Interface which defines a public API for loading data from a particular
@@ -59,22 +60,6 @@ type Interface[K comparable, V any] interface {
 	Prime(ctx context.Context, key K, value V) Interface[K, V]
 }
 
-// Result is the result of a DataLoader operation
-type Result[V any] struct {
-	data V
-	err  error
-}
-
-// Wrap wraps data and an error into a Result
-func Wrap[V any](data V, err error) Result[V] {
-	return Result[V]{data: data, err: err}
-}
-
-// TryUnwrap returns the data or an error
-func (r Result[V]) Unwrap() (V, error) {
-	return r.data, r.err
-}
-
 // New creates a new DataLoader with the given loader function and options
 func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[K, V] {
 	config := config{
@@ -89,10 +74,10 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[
 	}
 
 	dl := &dataLoader[K, V]{
-		loader: loader,
-		config: config,
+		loader:       loader,
+		config:       config,
+		stopSchedule: make(chan struct{}),
 	}
-
 	dl.reset()
 
 	// Create a cache if the cache size is greater than 0
@@ -145,7 +130,8 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 	d.mu.Lock()
 	if len(d.batch) == 0 {
 		// If there are no keys in the current batch, schedule a new batch timer
-		go d.scheduleBatch(ctx, ch)
+		d.stopSchedule = make(chan struct{})
+		go d.scheduleBatch(ctx, d.stopSchedule)
 	}
 
 	// Check if the key is in flight
@@ -155,17 +141,18 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 		return ch
 	}
 
+	// Add the key and channel to the current batch
+	d.batch = append(d.batch, key)
+	d.chs[key] = []chan Result[V]{ch}
+
 	// If the current batch is full, start processing it
 	if len(d.batch) >= d.config.BatchSize {
 		// spawn a new goroutine to process the batch
 		go d.processBatch(ctx, d.batch, d.chs)
+		close(d.stopSchedule)
 		// Create a new batch, and a new set of channels
 		d.reset()
 	}
-
-	// Add the key and channel to the current batch
-	d.batch = append(d.batch, key)
-	d.chs[key] = []chan Result[V]{ch}
 
 	// Unlock the DataLoader
 	d.mu.Unlock()
@@ -215,7 +202,7 @@ func (d *dataLoader[K, V]) reset() {
 }
 
 // scheduleBatch schedules a batch to be processed
-func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V]) {
+func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, stopSchedule <-chan struct{}) {
 	select {
 	case <-time.After(d.config.Wait):
 		d.mu.Lock()
@@ -224,8 +211,8 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, ch chan Result[V])
 			d.reset()
 		}
 		d.mu.Unlock()
-	case <-ctx.Done():
-		ch <- Result[V]{err: ctx.Err()}
+	case <-stopSchedule:
+		return
 	}
 }
 
@@ -254,10 +241,15 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs map[K
 			d.cache.Add(key, results[i].data)
 		}
 
-		for _, ch := range chs[key] {
-			ch <- results[i]
-			close(ch)
-		}
+		sendResult(chs[key], results[i])
+	}
+}
+
+// sendResult sends a result to channels
+func sendResult[V any](chs []chan Result[V], result Result[V]) {
+	for _, ch := range chs {
+		ch <- result
+		close(ch)
 	}
 }
 

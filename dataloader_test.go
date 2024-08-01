@@ -22,6 +22,45 @@ func TestDataLoader(t *testing.T) {
 	t.Run("Panic recovered", testPanicRecovered)
 	t.Run("Prime", testPrime)
 	t.Run("Inflight", testInflight)
+	t.Run("Schedule batch", testScheduleBatch)
+}
+
+func testScheduleBatch(t *testing.T) {
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
+		if len(keys) != 5 {
+			t.Errorf("Expected 5 keys, got %d", keys)
+		}
+
+		results := make([]Result[string], len(keys))
+		for i, key := range keys {
+			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
+		}
+		return results
+	}, WithBatchSize(5), WithWait(100*time.Millisecond))
+
+	chs := make([]<-chan Result[string], 0)
+	for i := 0; i < 4; i++ {
+		chs = append(chs, loader.(*dataLoader[int, string]).goLoad(context.Background(), i))
+	}
+	time.Sleep(60 * time.Millisecond)
+
+	for i := 4; i < 10; i++ {
+		chs = append(chs, loader.(*dataLoader[int, string]).goLoad(context.Background(), i))
+	}
+
+	time.Sleep(60 * time.Millisecond)
+
+	for idx, ch := range chs {
+		result := <-ch
+		data, err := result.Unwrap()
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if data != fmt.Sprintf("Result for %d", idx) {
+			t.Errorf("Unexpected result: %v", data)
+		}
+	}
 }
 
 func testInflight(t *testing.T) {
@@ -37,13 +76,13 @@ func testInflight(t *testing.T) {
 		return results
 	}, WithBatchSize(5))
 
-	chs := make([]<-chan Result[string], 0)
-	for i := 0; i < 10; i++ {
-		chs = append(chs, loader.(*dataLoader[int, string]).goLoad(context.Background(), i/2))
+	ii := make([]int, 0)
+	for i := 0; i < 9; i++ {
+		ii = append(ii, i/2)
 	}
 
-	for idx, ch := range chs {
-		result := <-ch
+	chs := loader.LoadMany(context.TODO(), ii)
+	for idx, result := range chs {
 		data, err := result.Unwrap()
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
@@ -222,15 +261,26 @@ func testOptions(t *testing.T) {
 
 func testContextCancellation(t *testing.T) {
 	loader := New(func(ctx context.Context, keys []int) []Result[string] {
-		<-ctx.Done()
-		return nil
-	})
+		results := make([]Result[string], len(keys))
+		for i, key := range keys {
+			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
+		}
+
+		return results
+	}, WithBatchSize(2))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result := loader.Load(ctx, 1)
-	if result.err == nil {
-		t.Error("Expected error when context is cancelled")
+
+	results := loader.LoadMany(ctx, []int{0, 1})
+	for idx, result := range results {
+		if result.err != nil {
+			t.Errorf("Unexpected error: %v", result.err)
+		}
+
+		if result.data != fmt.Sprintf("Result for %d", idx) {
+			t.Errorf("Unexpected result: %v", result.data)
+		}
 	}
 }
 
