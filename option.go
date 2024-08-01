@@ -1,6 +1,10 @@
 package dataloader
 
-import "time"
+import (
+	"time"
+
+	"go.opentelemetry.io/otel/trace"
+)
 
 // Option is a function type for configuring DataLoader
 type Option func(*config)
@@ -24,5 +28,12 @@ func WithBatchSize(size int) Option {
 func WithWait(wait time.Duration) Option {
 	return func(c *config) {
 		c.Wait = wait
+	}
+}
+
+// WithTracerProvider sets the tracer for the DataLoader
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return func(c *config) {
+		c.TracerProvider = tp
 	}
 }

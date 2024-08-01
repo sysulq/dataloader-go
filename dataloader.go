@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // Loader is the function type for loading data
@@ -17,11 +19,6 @@ type Loader[K comparable, V any] func(context.Context, []K) []Result[V]
 // Interface is a `DataLoader` Interface which defines a public API for loading data from a particular
 // data back-end with unique keys such as the `id` column of a SQL table or
 // document name in a MongoDB database, given a batch loading function.
-//
-// Each `DataLoader` instance should contain a unique memoized cache. Use caution when
-// used in long-lived applications or those which serve many users with
-// different access permissions and consider creating a new instance per
-// web request.
 type Interface[K comparable, V any] interface {
 	// Load loads a single key
 	Load(context.Context, K) Result[V]
@@ -47,6 +44,8 @@ type config struct {
 	CacheSize int
 	// CacheExpire is the duration to expire cache items, Default is 1 minute
 	CacheExpire time.Duration
+	// TracerProvider is the tracer provider to use for tracing
+	TracerProvider trace.TracerProvider
 }
 
 // dataLoader is the main struct for the dataloader
@@ -56,6 +55,7 @@ type dataLoader[K comparable, V any] struct {
 	config       config
 	mu           sync.Mutex
 	batch        []K
+	batchCtx     []context.Context
 	chs          map[K][]chan Result[V]
 	stopSchedule chan struct{}
 }
@@ -90,11 +90,17 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[
 
 // Load loads a single key
 func (d *dataLoader[K, V]) Load(ctx context.Context, key K) Result[V] {
+	ctx, span := d.startTrace(ctx, "dataLoader.Load")
+	defer span.End()
+
 	return <-d.goLoad(ctx, key)
 }
 
 // LoadMany loads multiple keys
 func (d *dataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
+	ctx, span := d.startTrace(ctx, "dataLoader.LoadMany")
+	defer span.End()
+
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
 		chs[i] = d.goLoad(ctx, key)
@@ -104,12 +110,14 @@ func (d *dataLoader[K, V]) LoadMany(ctx context.Context, keys []K) []Result[V] {
 	for i, ch := range chs {
 		results[i] = <-ch
 	}
-
 	return results
 }
 
 // LoadMap loads multiple keys and returns a map of results
 func (d *dataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V] {
+	ctx, span := d.startTrace(ctx, "dataLoader.LoadMap")
+	defer span.End()
+
 	chs := make([]<-chan Result[V], len(keys))
 	for i, key := range keys {
 		chs[i] = d.goLoad(ctx, key)
@@ -167,6 +175,10 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 
 	// Lock the DataLoader
 	d.mu.Lock()
+	if d.config.TracerProvider != nil {
+		d.batchCtx = append(d.batchCtx, ctx)
+	}
+
 	if len(d.batch) == 0 {
 		// If there are no keys in the current batch, schedule a new batch timer
 		d.stopSchedule = make(chan struct{})
@@ -187,7 +199,7 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 	// If the current batch is full, start processing it
 	if len(d.batch) >= d.config.BatchSize {
 		// spawn a new goroutine to process the batch
-		go d.processBatch(ctx, d.batch, d.chs)
+		go d.processBatch(ctx, d.batch, d.batchCtx, d.chs)
 		close(d.stopSchedule)
 		// Create a new batch, and a new set of channels
 		d.reset()
@@ -205,7 +217,7 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, stopSchedule <-cha
 	case <-time.After(d.config.Wait):
 		d.mu.Lock()
 		if len(d.batch) > 0 {
-			go d.processBatch(ctx, d.batch, d.chs)
+			go d.processBatch(ctx, d.batch, d.batchCtx, d.chs)
 			d.reset()
 		}
 		d.mu.Unlock()
@@ -215,7 +227,7 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, stopSchedule <-cha
 }
 
 // processBatch processes a batch of keys
-func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs map[K][]chan Result[V]) {
+func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx []context.Context, chs map[K][]chan Result[V]) {
 	defer func() {
 		if r := recover(); r != nil {
 			const size = 64 << 10
@@ -233,13 +245,29 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs map[K
 			return
 		}
 	}()
-	results := d.loader(ctx, keys)
 
+	if d.config.TracerProvider != nil {
+		// Create a span with links to the batch contexts, which enables trace propagation
+		// We should deduplicate identical batch contexts to avoid creating duplicate links.
+		links := make([]trace.Link, 0, len(keys))
+		seen := make(map[context.Context]struct{}, len(batchCtx))
+		for _, bCtx := range batchCtx {
+			if _, ok := seen[bCtx]; ok {
+				continue
+			}
+			links = append(links, trace.Link{SpanContext: trace.SpanContextFromContext(bCtx)})
+			seen[bCtx] = struct{}{}
+		}
+		var span trace.Span
+		ctx, span = d.config.TracerProvider.Tracer("dataLoader").Start(ctx, "dataLoader.Batch", trace.WithLinks(links...))
+		defer span.End()
+	}
+
+	results := d.loader(ctx, keys)
 	for i, key := range keys {
 		if results[i].err == nil && d.cache != nil {
 			d.cache.Add(key, results[i].data)
 		}
-
 		sendResult(chs[key], results[i])
 	}
 }
@@ -247,6 +275,7 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, chs map[K
 // reset resets the DataLoader
 func (d *dataLoader[K, V]) reset() {
 	d.batch = make([]K, 0, d.config.BatchSize)
+	d.batchCtx = make([]context.Context, 0, d.config.BatchSize)
 	d.chs = make(map[K][]chan Result[V], d.config.BatchSize)
 }
 
@@ -256,4 +285,12 @@ func sendResult[V any](chs []chan Result[V], result Result[V]) {
 		ch <- result
 		close(ch)
 	}
+}
+
+// startTrace starts a trace span
+func (d *dataLoader[K, V]) startTrace(ctx context.Context, name string) (context.Context, trace.Span) {
+	if d.config.TracerProvider != nil {
+		return d.config.TracerProvider.Tracer("dataLoader").Start(ctx, name)
+	}
+	return ctx, noop.Span{}
 }

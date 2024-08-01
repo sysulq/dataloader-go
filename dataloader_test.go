@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestDataLoader(t *testing.T) {
@@ -23,6 +26,117 @@ func TestDataLoader(t *testing.T) {
 	t.Run("Prime", testPrime)
 	t.Run("Inflight", testInflight)
 	t.Run("Schedule batch", testScheduleBatch)
+	t.Run("Trace", testTrace)
+}
+
+func testTrace(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+
+	loader := New(func(ctx context.Context, keys []int) []Result[string] {
+		results := make([]Result[string], len(keys))
+		for i, key := range keys {
+			results[i] = Result[string]{data: fmt.Sprintf("Result for %d", key)}
+		}
+		return results
+	},
+		WithTracerProvider(tp),
+	)
+
+	{
+		ctx, span := tp.Tracer("dataLoader").Start(context.Background(), "test")
+		defer span.End()
+
+		wg := sync.WaitGroup{}
+		for i := 0; i < 10; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				_ = loader.Load(ctx, i/2)
+			}(i)
+		}
+		wg.Wait()
+
+		spans := exporter.GetSpans()
+		if len(spans.Snapshots()) != 11 {
+			t.Errorf("Expected 11 spans, got %d", len(spans.Snapshots()))
+		}
+
+		if spans.Snapshots()[0].Name() != "dataLoader.Batch" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[0].Links()) != 10 {
+			t.Errorf("Expected 10 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+
+		if spans.Snapshots()[1].Name() != "dataLoader.Load" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[1].Links()) != 0 {
+			t.Errorf("Expected 3 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+
+		exporter.Reset()
+	}
+	{
+		ctx, span := tp.Tracer("dataLoader").Start(context.Background(), "test")
+		defer span.End()
+
+		_ = loader.LoadMany(ctx, []int{1, 2, 3, 9})
+		spans := exporter.GetSpans()
+
+		if len(spans.Snapshots()) != 2 {
+			t.Errorf("Expected 11 spans, got %d", len(spans.Snapshots()))
+		}
+
+		if spans.Snapshots()[0].Name() != "dataLoader.Batch" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[0].Links()) != 1 {
+			t.Errorf("Expected 1 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+
+		if spans.Snapshots()[1].Name() != "dataLoader.LoadMany" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[1].Links()) != 0 {
+			t.Errorf("Expected 0 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+
+		exporter.Reset()
+	}
+	{
+		ctx, span := tp.Tracer("dataLoader").Start(context.Background(), "test")
+		defer span.End()
+
+		loader.LoadMap(ctx, []int{3, 14, 14, 15, 16})
+
+		spans := exporter.GetSpans()
+
+		if len(spans.Snapshots()) != 2 {
+			t.Errorf("Expected 11 spans, got %d", len(spans.Snapshots()))
+		}
+
+		if spans.Snapshots()[0].Name() != "dataLoader.Batch" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[0].Links()) != 1 {
+			t.Errorf("Expected 1 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+
+		if spans.Snapshots()[1].Name() != "dataLoader.LoadMap" {
+			t.Errorf("Unexpected span name: %v", spans.Snapshots()[0].Name())
+		}
+
+		if len(spans.Snapshots()[1].Links()) != 0 {
+			t.Errorf("Expected 0 links, got %d", len(spans.Snapshots()[0].Links()))
+		}
+	}
 }
 
 func testScheduleBatch(t *testing.T) {
