@@ -33,8 +33,6 @@ API Design
 func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[K, V]
 
 type Interface[K comparable, V any] interface {
-	// Go loads a single key asynchronously
-	Go(context.Context, K) <-chan Result[V]
 	// Load loads a single key
 	Load(context.Context, K) Result[V]
 	// LoadMany loads multiple keys

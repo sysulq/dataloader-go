@@ -132,13 +132,13 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 		// If there are no keys in the current batch, schedule a new batch timer
 		d.stopSchedule = make(chan struct{})
 		go d.scheduleBatch(ctx, d.stopSchedule)
-	}
-
-	// Check if the key is in flight
-	if chs, ok := d.chs[key]; ok {
-		d.chs[key] = append(chs, ch)
-		d.mu.Unlock()
-		return ch
+	} else {
+		// Check if the key is in flight
+		if chs, ok := d.chs[key]; ok {
+			d.chs[key] = append(chs, ch)
+			d.mu.Unlock()
+			return ch
+		}
 	}
 
 	// Add the key and channel to the current batch
