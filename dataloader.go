@@ -127,7 +127,6 @@ func (d *dataLoader[K, V]) LoadMap(ctx context.Context, keys []K) map[K]Result[V
 	for i, ch := range chs {
 		results[keys[i]] = <-ch
 	}
-
 	return results
 }
 
@@ -136,7 +135,6 @@ func (d *dataLoader[K, V]) Clear(key K) Interface[K, V] {
 	if d.cache != nil {
 		d.cache.Remove(key)
 	}
-
 	return d
 }
 
@@ -145,7 +143,6 @@ func (d *dataLoader[K, V]) ClearAll() Interface[K, V] {
 	if d.cache != nil {
 		d.cache.Purge()
 	}
-
 	return d
 }
 
@@ -156,7 +153,6 @@ func (d *dataLoader[K, V]) Prime(ctx context.Context, key K, value V) Interface[
 			d.cache.Add(key, value)
 		}
 	}
-
 	return d
 }
 
@@ -207,7 +203,6 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 
 	// Unlock the DataLoader
 	d.mu.Unlock()
-
 	return ch
 }
 
@@ -237,12 +232,8 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx 
 			fmt.Fprintf(os.Stderr, "%v\n%s", err, buf)
 
 			for _, chs := range chs {
-				for _, ch := range chs {
-					ch <- Result[V]{err: err}
-					close(ch)
-				}
+				sendResult(chs, Result[V]{err: err})
 			}
-			return
 		}
 	}()
 
