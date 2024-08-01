@@ -173,3 +173,8 @@ PASS
 coverage: 60.7% of statements
 ok  	github.com/sysulq/dataloader-go	5.938s
 ```
+
+Acknowledgements
+---
+
+Inspired by facebook/dataloader and graph-gophers/dataloader.
