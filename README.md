@@ -17,7 +17,7 @@ Feature
 - Use hashicorp/golang-lru to cache the loaded values.
 - Can be used to batch and cache multiple requests.
 - Deduplicate identical requests, reducing the number of requests.
-- Support OpenTelemetry, trace batched requests with OpenTelemetry/Link.
+- Support OpenTelemetry, trace batched requests with Links.
 
 Installation
 ---
