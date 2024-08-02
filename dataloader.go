@@ -13,12 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-// Loader is the function type for loading data
-type Loader[K comparable, V any] func(context.Context, []K) []Result[V]
-
-// Interface is a `DataLoader` Interface which defines a public API for loading data from a particular
-// data back-end with unique keys such as the `id` column of a SQL table or
-// document name in a MongoDB database, given a batch loading function.
+// Interface defines a public API for loading data from a particular data source
 type Interface[K comparable, V any] interface {
 	// Load loads a single key
 	Load(context.Context, K) Result[V]
@@ -33,6 +28,9 @@ type Interface[K comparable, V any] interface {
 	// Prime primes the cache with a key and value
 	Prime(ctx context.Context, key K, value V) Interface[K, V]
 }
+
+// Loader is the function type for loading data
+type Loader[K comparable, V any] func(context.Context, []K) []Result[V]
 
 // config holds the configuration for DataLoader
 type config struct {
@@ -68,7 +66,6 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[
 		CacheSize:   1024,
 		CacheExpire: time.Minute,
 	}
-
 	for _, option := range options {
 		option(&config)
 	}
@@ -79,12 +76,10 @@ func New[K comparable, V any](loader Loader[K, V], options ...Option) Interface[
 		stopSchedule: make(chan struct{}),
 	}
 	dl.reset()
-
 	// Create a cache if the cache size is greater than 0
 	if config.CacheSize > 0 {
 		dl.cache = expirable.NewLRU[K, V](config.CacheSize, nil, config.CacheExpire)
 	}
-
 	return dl
 }
 
@@ -197,7 +192,6 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 		// spawn a new goroutine to process the batch
 		go d.processBatch(ctx, d.batch, d.batchCtx, d.chs)
 		close(d.stopSchedule)
-		// Create a new batch, and a new set of channels
 		d.reset()
 	}
 
@@ -225,14 +219,13 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, stopSchedule <-cha
 func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx []context.Context, chs map[K][]chan Result[V]) {
 	defer func() {
 		if r := recover(); r != nil {
-			const size = 64 << 10
-			buf := make([]byte, size)
+			buf := make([]byte, 64<<10)
 			buf = buf[:runtime.Stack(buf, false)]
 			err := fmt.Errorf("dataloader: panic received in loader function: %v", r)
 			fmt.Fprintf(os.Stderr, "%v\n%s", err, buf)
 
 			for _, chs := range chs {
-				sendResult(chs, Result[V]{err: err})
+				d.sendResult(chs, Result[V]{err: err})
 			}
 		}
 	}()
@@ -259,11 +252,11 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx 
 		if results[i].err == nil && d.cache != nil {
 			d.cache.Add(key, results[i].data)
 		}
-		sendResult(chs[key], results[i])
+		d.sendResult(chs[key], results[i])
 	}
 }
 
-// reset resets the DataLoader
+// reset resets the DataLoader state
 func (d *dataLoader[K, V]) reset() {
 	d.batch = make([]K, 0, d.config.BatchSize)
 	d.batchCtx = make([]context.Context, 0, d.config.BatchSize)
@@ -271,20 +264,21 @@ func (d *dataLoader[K, V]) reset() {
 }
 
 // sendResult sends a result to channels
-func sendResult[V any](chs []chan Result[V], result Result[V]) {
+func (d *dataLoader[K, V]) sendResult(chs []chan Result[V], result Result[V]) {
 	for _, ch := range chs {
 		ch <- result
 		close(ch)
 	}
 }
 
+var noopSpan = noop.Span{}
+
 // startTrace starts a trace span
 func (d *dataLoader[K, V]) startTrace(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	if d.config.TracerProvider != nil {
-		span := trace.SpanFromContext(ctx)
-		if span.SpanContext().IsValid() {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 			return d.config.TracerProvider.Tracer("dataLoader").Start(ctx, name, opts...)
 		}
 	}
-	return ctx, noop.Span{}
+	return ctx, noopSpan
 }
