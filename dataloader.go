@@ -53,7 +53,7 @@ type dataLoader[K comparable, V any] struct {
 	config       config
 	mu           sync.Mutex
 	batch        []K
-	batchCtx     []context.Context
+	batchCtx     map[context.Context]struct{}
 	chs          map[K][]chan Result[V]
 	stopSchedule chan struct{}
 }
@@ -167,7 +167,9 @@ func (d *dataLoader[K, V]) goLoad(ctx context.Context, key K) <-chan Result[V] {
 	// Lock the DataLoader
 	d.mu.Lock()
 	if d.config.TracerProvider != nil {
-		d.batchCtx = append(d.batchCtx, ctx)
+		if _, ok := d.batchCtx[ctx]; !ok {
+			d.batchCtx[ctx] = struct{}{}
+		}
 	}
 
 	if len(d.batch) == 0 {
@@ -216,7 +218,7 @@ func (d *dataLoader[K, V]) scheduleBatch(ctx context.Context, stopSchedule <-cha
 }
 
 // processBatch processes a batch of keys
-func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx []context.Context, chs map[K][]chan Result[V]) {
+func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx map[context.Context]struct{}, chs map[K][]chan Result[V]) {
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 64<<10)
@@ -234,13 +236,8 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx 
 		// Create a span with links to the batch contexts, which enables trace propagation
 		// We should deduplicate identical batch contexts to avoid creating duplicate links.
 		links := make([]trace.Link, 0, len(keys))
-		seen := make(map[context.Context]struct{}, len(batchCtx))
-		for _, bCtx := range batchCtx {
-			if _, ok := seen[bCtx]; ok {
-				continue
-			}
+		for bCtx := range batchCtx {
 			links = append(links, trace.Link{SpanContext: trace.SpanContextFromContext(bCtx)})
-			seen[bCtx] = struct{}{}
 		}
 		var span trace.Span
 		ctx, span = d.startTrace(ctx, "dataLoader.Batch", trace.WithLinks(links...))
@@ -259,7 +256,7 @@ func (d *dataLoader[K, V]) processBatch(ctx context.Context, keys []K, batchCtx 
 // reset resets the DataLoader state
 func (d *dataLoader[K, V]) reset() {
 	d.batch = make([]K, 0, d.config.BatchSize)
-	d.batchCtx = make([]context.Context, 0, d.config.BatchSize)
+	d.batchCtx = make(map[context.Context]struct{}, d.config.BatchSize)
 	d.chs = make(map[K][]chan Result[V], d.config.BatchSize)
 }
 
