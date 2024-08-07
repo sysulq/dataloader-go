@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
+    
 jobs:
 
   build:
@@ -14,6 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         version: ["1.22.x"]
+
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+
     steps:
     - uses: actions/checkout@v4
 
