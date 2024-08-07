@@ -16,7 +16,7 @@ type ClientInterface interface {
 	Pipelined(ctx context.Context, fn func(redis.Pipeliner) error) ([]redis.Cmder, error)
 }
 
-// redisDataLoader implements the DataLoader interface
+// redisDataLoader implements the DataLoader for Redis
 type redisDataLoader[K comparable, V any] struct {
 	redisClient ClientInterface
 	loader      dataloader.Loader[K, V]
@@ -38,24 +38,28 @@ type option struct {
 	UnmarshalFunc func([]byte, any) error
 }
 
+// WithExpiration sets the expiration time for the cache
 func WithExpiration(expiration time.Duration) func(*option) {
 	return func(o *option) {
 		o.Expiration = expiration
 	}
 }
 
+// WithKeyFunc sets the key function for the cache
 func WithKeyFunc(keyFunc func(any) string) func(*option) {
 	return func(o *option) {
 		o.KeyFunc = keyFunc
 	}
 }
 
+// WithMarshalFunc sets the marshal function for the cache
 func WithMarshalFunc(marshalFunc func(any) ([]byte, error)) func(*option) {
 	return func(o *option) {
 		o.MarshalFunc = marshalFunc
 	}
 }
 
+// WithUnmarshalFunc sets the unmarshal function for the cache
 func WithUnmarshalFunc(unmarshalFunc func([]byte, any) error) func(*option) {
 	return func(o *option) {
 		o.UnmarshalFunc = unmarshalFunc
@@ -90,11 +94,11 @@ func New[K comparable, V any](client ClientInterface, loader dataloader.Loader[K
 
 // Load implements the DataLoader Loader function
 func (dl *redisDataLoader[K, V]) Load(ctx context.Context, keys []K) []dataloader.Result[V] {
-	resultMap := make(map[K]dataloader.Result[V], len(keys))
 	if len(keys) == 0 {
-		return mapToSlice(keys, resultMap)
+		return make([]dataloader.Result[V], 0)
 	}
 
+	resultMap := make(map[K]dataloader.Result[V], len(keys))
 	missingKeys := make([]K, 0, len(keys))
 
 	newKeys := make([]string, 0, len(keys))
