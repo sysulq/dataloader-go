@@ -234,7 +234,7 @@ func testBasicFunctionality(t *testing.T) {
 	}
 
 	if result.data != "Result for 1" {
-		t.Errorf(result.Unwrap())
+		t.Error(result.Unwrap())
 	}
 }
 
@@ -332,7 +332,7 @@ func testErrorHandling(t *testing.T) {
 		t.Errorf("Unexpected error for odd number: %v", result.err)
 	}
 	if result.data != "Result for 1" {
-		t.Errorf(result.Unwrap())
+		t.Error(result.Unwrap())
 	}
 }
 
@@ -356,7 +356,7 @@ func testConcurrency(t *testing.T) {
 				t.Errorf("Unexpected error: %v", result.err)
 			}
 			if result.data != fmt.Sprintf("Result for %d", i) {
-				t.Errorf(result.Unwrap())
+				t.Error(result.Unwrap())
 			}
 		}(i)
 	}
@@ -378,7 +378,7 @@ func testOptions(t *testing.T) {
 	}
 	result := loader.Load(context.Background(), 0)
 	if result.data != "Result for 0" {
-		t.Errorf(result.Unwrap())
+		t.Error(result.Unwrap())
 	}
 
 	// Other options are harder to test directly, but they've been set
